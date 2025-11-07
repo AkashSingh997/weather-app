@@ -8,6 +8,68 @@ export default function WeatherApp() {
   const [error, setError] = useState(null);
   const [current, setCurrent] = useState(null);
   const [forecast, setForecast] = useState(null);
+  useEffect(() => {
+  // Automatically get user's location on app load
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          // Fetch current weather using lat/lon
+          const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=${OPEN_WEATHER_API_KEY}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.message || "Failed to fetch");
+          setCurrent(data);
+          setCity(data.name);
+
+          // Optional: also load 3-day forecast
+          try {
+            const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${latitude}&lon=${longitude}&units=metric&appid=${OPEN_WEATHER_API_KEY}`;
+            const fRes = await fetch(forecastUrl);
+            const fData = await fRes.json();
+            if (fRes.ok) {
+              const byDay = {};
+              (fData.list || []).forEach((entry) => {
+                const day = new Date(entry.dt * 1000).toISOString().slice(0, 10);
+                byDay[day] ||= { temps: [], cond: {} };
+                byDay[day].temps.push(entry.main.temp);
+                const c = entry.weather?.[0]?.main || "";
+                byDay[day].cond[c] = (byDay[day].cond[c] || 0) + 1;
+              });
+
+              const days = Object.keys(byDay).sort();
+              const today = new Date().toISOString().slice(0, 10);
+              const nextDays = days.filter((d) => d > today).slice(0, 3);
+
+              const fc = nextDays.map((d) => {
+                const temps = byDay[d].temps;
+                const min = Math.round(Math.min(...temps));
+                const max = Math.round(Math.max(...temps));
+                const dominant =
+                  Object.entries(byDay[d].cond).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+                return { date: d, min, max, main: dominant };
+              });
+
+              setForecast(fc);
+            }
+          } catch {
+            console.warn("Forecast fetch failed");
+          }
+        } catch (err) {
+          setError(err.message || "Unable to fetch weather data");
+        }
+      },
+      (error) => {
+        console.warn("User denied location:", error);
+        setError("Location permission denied. Please allow location access.");
+      }
+    );
+  } else {
+    setError("Geolocation not supported by this browser.");
+  }
+}, []);
+
 
   async function fetchCurrentWeather(q) {
     const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(
